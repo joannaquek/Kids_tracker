@@ -398,25 +398,20 @@ export const MedicationScheduler: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    className="med-photo-upload-btn"
-                    onClick={() => photoInputRef.current?.click()}
-                    disabled={isSaving}
-                    aria-label="Add medication photo"
-                  >
-                    <span className="med-photo-upload-icon">📷</span>
+                  <label className={`med-photo-upload-btn${isSaving ? ' med-photo-upload-btn--disabled' : ''}`}>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoSelect}
+                      className="med-photo-upload-input"
+                      disabled={isSaving}
+                      aria-label="Add medication photo from camera or gallery"
+                    />
+                    <span className="med-photo-upload-icon" aria-hidden="true">📷</span>
                     <span>Add photo from camera or gallery</span>
-                  </button>
+                  </label>
                 )}
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handlePhotoSelect}
-                  style={{ display: 'none' }}
-                />
                 {scanStatus && (
                   <div className={`scan-status scan-status--${scanStatus.type}`} role="status">
                     {scanStatus.message}

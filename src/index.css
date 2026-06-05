@@ -1002,6 +1002,7 @@ textarea {
 }
 
 .med-photo-upload-btn {
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
@@ -1021,6 +1022,22 @@ textarea {
   border-color: var(--accent);
   color: var(--accent);
   background-color: rgba(99, 102, 241, 0.05);
+}
+
+.med-photo-upload-btn--disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.med-photo-upload-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
 }
 
 .med-photo-upload-icon {
