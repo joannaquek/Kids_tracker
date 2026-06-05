@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTracker } from '../context/TrackerContext';
 import type { MedicationSchedule } from '../types';
 import { compressImageFile } from '../lib/compressImage';
 import { createPhotoId, saveMedicationPhoto } from '../lib/medicationPhotos';
 import { scanMedicationLabel } from '../lib/scanMedicationLabel';
 import { MedicationPhotoThumb } from './MedicationPhotoThumb';
+
+const MED_PHOTO_INPUT_ID = 'med-photo-picker';
 
 export const MedicationScheduler: React.FC = () => {
   const {
@@ -71,6 +74,22 @@ export const MedicationScheduler: React.FC = () => {
     setPendingPhotoDataUrl(null);
     setPendingPhotoId(null);
     setScanStatus(null);
+  };
+
+  const handleOpenPhotoPicker = () => {
+    const input = photoInputRef.current;
+    if (!input || isSaving) return;
+
+    if (typeof input.showPicker === 'function') {
+      try {
+        input.showPicker();
+        return;
+      } catch {
+        // showPicker is unsupported or blocked; fall back to click()
+      }
+    }
+
+    input.click();
   };
 
   const handleScanLabel = async () => {
@@ -398,19 +417,16 @@ export const MedicationScheduler: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <label className={`med-photo-upload-btn${isSaving ? ' med-photo-upload-btn--disabled' : ''}`}>
-                    <input
-                      ref={photoInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoSelect}
-                      className="med-photo-upload-input"
-                      disabled={isSaving}
-                      aria-label="Add medication photo from camera or gallery"
-                    />
+                  <button
+                    type="button"
+                    className={`med-photo-upload-btn${isSaving ? ' med-photo-upload-btn--disabled' : ''}`}
+                    onClick={handleOpenPhotoPicker}
+                    disabled={isSaving}
+                    aria-label="Add medication photo from camera or gallery"
+                  >
                     <span className="med-photo-upload-icon" aria-hidden="true">📷</span>
                     <span>Add photo from camera or gallery</span>
-                  </label>
+                  </button>
                 )}
                 {scanStatus && (
                   <div className={`scan-status scan-status--${scanStatus.type}`} role="status">
@@ -522,6 +538,23 @@ export const MedicationScheduler: React.FC = () => {
           </div>
         </div>
       )}
+
+      {isFormOpen &&
+        !pendingPhotoDataUrl &&
+        createPortal(
+          <input
+            ref={photoInputRef}
+            id={MED_PHOTO_INPUT_ID}
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoSelect}
+            className="med-photo-upload-input-portal"
+            disabled={isSaving}
+            tabIndex={-1}
+            aria-hidden="true"
+          />,
+          document.body
+        )}
 
       {lightboxPhotoId && (
         <div className="modal-overlay" onClick={() => setLightboxPhotoId(null)}>
