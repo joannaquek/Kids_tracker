@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTracker } from '../context/TrackerContext';
 import type { MedicationSchedule } from '../types';
+import { compressImageFile } from '../lib/compressImage';
+import { createPhotoId, saveMedicationPhoto } from '../lib/medicationPhotos';
+import { scanMedicationLabel } from '../lib/scanMedicationLabel';
+import { MedicationPhotoThumb } from './MedicationPhotoThumb';
 
 export const MedicationScheduler: React.FC = () => {
   const {
@@ -25,6 +29,85 @@ export const MedicationScheduler: React.FC = () => {
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [pendingPhotoDataUrl, setPendingPhotoDataUrl] = useState<string | null>(null);
+  const [pendingPhotoId, setPendingPhotoId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanStatus, setScanStatus] = useState<{ type: 'info' | 'success' | 'error'; message: string } | null>(null);
+  const [lightboxPhotoId, setLightboxPhotoId] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const resetForm = () => {
+    setMedicationName('');
+    setDosage('');
+    setFrequencyHours('6');
+    setNotes('');
+    setPendingPhotoDataUrl(null);
+    setPendingPhotoId(null);
+    setScanStatus(null);
+    setIsFormOpen(false);
+  };
+
+  const handlePhotoSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const dataUrl = await compressImageFile(file);
+      setPendingPhotoDataUrl(dataUrl);
+      setPendingPhotoId(createPhotoId());
+      setScanStatus(null);
+    } catch (error) {
+      console.error('Photo processing failed', error);
+      setScanStatus({ type: 'error', message: 'Could not process that photo. Try another image.' });
+    } finally {
+      if (photoInputRef.current) {
+        photoInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setPendingPhotoDataUrl(null);
+    setPendingPhotoId(null);
+    setScanStatus(null);
+  };
+
+  const handleScanLabel = async () => {
+    if (!pendingPhotoDataUrl) return;
+
+    setIsScanning(true);
+    setScanStatus({ type: 'info', message: 'Reading label…' });
+
+    try {
+      const result = await scanMedicationLabel(pendingPhotoDataUrl);
+
+      if (result.medicationName) setMedicationName(result.medicationName);
+      if (result.dosage) setDosage(result.dosage);
+      if (result.notes) setNotes(result.notes);
+      if (result.suggestedFrequencyHours) {
+        setFrequencyHours(String(result.suggestedFrequencyHours));
+      }
+
+      const foundFields = [result.medicationName, result.dosage, result.notes].filter(Boolean).length;
+      if (foundFields === 0) {
+        setScanStatus({
+          type: 'error',
+          message: 'Could not read the label clearly. Fill in the details manually.'
+        });
+      } else {
+        setScanStatus({
+          type: 'success',
+          message: 'Suggestions added — please verify against your prescription before saving.'
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Label scan failed';
+      setScanStatus({ type: 'error', message });
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   // Update current time every 10 seconds for countdown precision
   useEffect(() => {
@@ -43,26 +126,38 @@ export const MedicationScheduler: React.FC = () => {
     }
   }, [selectedChildId, children]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!childId || !medicationName.trim() || !dosage.trim()) return;
+    if (!childId || !medicationName.trim() || !dosage.trim() || isSaving) return;
 
-    addMedicationSchedule({
-      childId,
-      medicationName: medicationName.trim(),
-      dosage: dosage.trim(),
-      frequencyHours: parseInt(frequencyHours, 10),
-      startDate,
-      endDate: endDate ? endDate : undefined,
-      notes: notes.trim()
-    });
+    setIsSaving(true);
 
-    // Reset Form
-    setMedicationName('');
-    setDosage('');
-    setFrequencyHours('6');
-    setNotes('');
-    setIsFormOpen(false);
+    try {
+      let photoId: string | undefined;
+
+      if (pendingPhotoDataUrl && pendingPhotoId) {
+        await saveMedicationPhoto(pendingPhotoId, pendingPhotoDataUrl);
+        photoId = pendingPhotoId;
+      }
+
+      addMedicationSchedule({
+        childId,
+        medicationName: medicationName.trim(),
+        dosage: dosage.trim(),
+        frequencyHours: parseInt(frequencyHours, 10),
+        startDate,
+        endDate: endDate ? endDate : undefined,
+        notes: notes.trim() || undefined,
+        photoId
+      });
+
+      resetForm();
+    } catch (error) {
+      console.error('Failed to save medication schedule', error);
+      setScanStatus({ type: 'error', message: 'Could not save the schedule. Please try again.' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleGiveNow = (schedule: MedicationSchedule) => {
@@ -199,9 +294,21 @@ export const MedicationScheduler: React.FC = () => {
                 </div>
 
                 <div className="schedule-body">
-                  <h4 className="medication-title">{sched.medicationName}</h4>
-                  <div className="dosage-info">
-                    <strong>Dosage:</strong> {sched.dosage}
+                  <div className="schedule-body-top">
+                    {sched.photoId && (
+                      <MedicationPhotoThumb
+                        photoId={sched.photoId}
+                        alt={sched.medicationName}
+                        className="schedule-photo-thumb"
+                        onClick={() => setLightboxPhotoId(sched.photoId!)}
+                      />
+                    )}
+                    <div className="schedule-body-text">
+                      <h4 className="medication-title">{sched.medicationName}</h4>
+                      <div className="dosage-info">
+                        <strong>Dosage:</strong> {sched.dosage}
+                      </div>
+                    </div>
                   </div>
                   {sched.notes && <p className="schedule-notes">{sched.notes}</p>}
 
@@ -265,6 +372,58 @@ export const MedicationScheduler: React.FC = () => {
               </button>
             </div>
             <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label>Medication Photo</label>
+                <p className="form-hint">Save a photo of the bottle or box so you can identify it later.</p>
+                {pendingPhotoDataUrl ? (
+                  <div className="med-photo-preview">
+                    <img src={pendingPhotoDataUrl} alt="Medication preview" />
+                    <div className="med-photo-preview-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={handleScanLabel}
+                        disabled={isScanning || isSaving}
+                      >
+                        {isScanning ? 'Reading label…' : 'Scan label (optional)'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={handleRemovePhoto}
+                        disabled={isScanning || isSaving}
+                      >
+                        Remove photo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="med-photo-upload-btn"
+                    onClick={() => photoInputRef.current?.click()}
+                    disabled={isSaving}
+                    aria-label="Add medication photo"
+                  >
+                    <span className="med-photo-upload-icon">📷</span>
+                    <span>Add photo from camera or gallery</span>
+                  </button>
+                )}
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoSelect}
+                  style={{ display: 'none' }}
+                />
+                {scanStatus && (
+                  <div className={`scan-status scan-status--${scanStatus.type}`} role="status">
+                    {scanStatus.message}
+                  </div>
+                )}
+              </div>
+
               {selectedChildId === 'all' && (
                 <div className="form-group">
                   <label htmlFor="sched-child-select">Select Child</label>
@@ -357,14 +516,33 @@ export const MedicationScheduler: React.FC = () => {
               </div>
 
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" onClick={() => setIsFormOpen(false)}>
+                <button type="button" className="btn btn-outline" onClick={resetForm} disabled={isSaving}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  Create Schedule
+                <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                  {isSaving ? 'Saving…' : 'Create Schedule'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {lightboxPhotoId && (
+        <div className="modal-overlay" onClick={() => setLightboxPhotoId(null)}>
+          <div className="photo-lightbox card" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="close-btn photo-lightbox-close"
+              onClick={() => setLightboxPhotoId(null)}
+              aria-label="Close photo"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <MedicationPhotoThumb photoId={lightboxPhotoId} alt="Medication" className="photo-lightbox-image" />
           </div>
         </div>
       )}

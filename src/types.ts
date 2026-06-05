@@ -29,6 +29,7 @@ export interface MedicationSchedule {
   endDate?: string;       // YYYY-MM-DD (optional)
   isActive: boolean;
   notes?: string;
+  photoId?: string;       // IndexedDB key for saved medication photo
 }
 
 export interface DoseLog {

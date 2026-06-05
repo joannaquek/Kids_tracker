@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useTracker } from '../context/TrackerContext';
+import { getAllMedicationPhotos, restoreMedicationPhotos } from '../lib/medicationPhotos';
 
 export const BackupRestore: React.FC = () => {
   const { exportData, importData, clearAllData } = useTracker();
@@ -9,9 +10,11 @@ export const BackupRestore: React.FC = () => {
     message: ''
   });
 
-  const handleExport = () => {
+  const handleExport = async () => {
     try {
-      const dataStr = exportData();
+      const data = JSON.parse(exportData());
+      data.medicationPhotos = await getAllMedicationPhotos();
+      const dataStr = JSON.stringify(data, null, 2);
       const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
 
       const dateStr = new Date().toISOString().slice(0, 10);
@@ -33,20 +36,43 @@ export const BackupRestore: React.FC = () => {
 
     if (!files || files.length === 0) return;
 
-    fileReader.onload = (e) => {
+    fileReader.onload = async (e) => {
       const target = e.target;
       if (!target || !target.result) return;
 
       const content = target.result as string;
-      const success = importData(content);
 
-      if (success) {
+      try {
+        const parsed = JSON.parse(content) as {
+          children?: unknown;
+          sicknessLogs?: unknown;
+          medicationSchedules?: unknown;
+          doseLogs?: unknown;
+          medicationPhotos?: Record<string, string>;
+        };
+
+        const { medicationPhotos, ...trackerData } = parsed;
+        const success = importData(JSON.stringify(trackerData));
+
+        if (!success) {
+          setImportStatus({
+            type: 'error',
+            message: 'Failed to import. The file might be corrupted or contains invalid data.'
+          });
+          setTimeout(() => setImportStatus({ type: null, message: '' }), 4000);
+          return;
+        }
+
+        if (medicationPhotos && typeof medicationPhotos === 'object') {
+          await restoreMedicationPhotos(medicationPhotos);
+        }
         setImportStatus({
           type: 'success',
           message: 'Data imported successfully! Your dashboard has been updated.'
         });
         setTimeout(() => setImportStatus({ type: null, message: '' }), 4000);
-      } else {
+      } catch (error) {
+        console.error('Import failed', error);
         setImportStatus({
           type: 'error',
           message: 'Failed to import. The file might be corrupted or contains invalid data.'

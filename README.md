@@ -14,9 +14,34 @@ Data lives in the browser (`localStorage`). No account or backend required.
 
 | Area | What it does |
 |------|----------------|
-| **Dashboard** | Child profiles, quick symptom/temperature logging, medication schedules with countdown, health timeline |
+| **Dashboard** | Child profiles, quick symptom/temperature logging, medication schedules with saved photos and optional label scan, countdown timers, health timeline |
 | **Analytics** | Temperature trend chart, symptom frequency |
 | **Settings** | Export/import JSON backup, clear all data |
+
+### Medication photos & label scan
+
+When creating a medication schedule you can:
+
+1. **Add a photo** of the bottle or box (saved locally in IndexedDB, linked to the schedule)
+2. **Optionally scan the label** to suggest name, dosage, and notes via **Google Gemini 2.5 Flash** (free tier for image input — not image generation)
+
+Label scan runs through a Vercel serverless function so your API key stays server-side.
+
+**Setup (one-time):**
+
+1. Get a free API key at [Google AI Studio](https://aistudio.google.com/apikey)
+2. Copy `.env.example` to `.env.local` and set `GEMINI_API_KEY=...`
+3. In Vercel → Project → Settings → Environment Variables, add the same `GEMINI_API_KEY` for Production (and Preview if you want)
+
+**Local dev with label scan:**
+
+```bash
+npm run dev:full   # runs Vite + /api routes via Vercel CLI
+```
+
+`npm run dev` still works for the UI, but `/api/scan-medication` is only available with `dev:full` or on the deployed site.
+
+Photos are included in JSON backup exports under `medicationPhotos`.
 
 ### Local development
 
@@ -40,7 +65,7 @@ npm run preview  # serve production build locally
 - **Framework:** Vite  
 - **Build command:** `npm run build`  
 - **Output directory:** `dist`  
-- **Environment variables:** none required for Phase 1  
+- **Environment variables:** `GEMINI_API_KEY` (optional — only for medication label scan)  
 
 Push to `main` on the connected Git repo; Vercel redeploys automatically.
 
@@ -141,10 +166,17 @@ src/
     ChildProfiles.tsx
     QuickLog.tsx
     MedicationScheduler.tsx
+    MedicationPhotoThumb.tsx
     HealthTimeline.tsx
     HealthAnalytics.tsx
     BackupRestore.tsx
+  lib/
+    medicationPhotos.ts   # IndexedDB photo storage
+    compressImage.ts
+    scanMedicationLabel.ts
   types.ts
+api/
+  scan-medication.ts        # Gemini 2.5 Flash label reader (Vercel)
 ```
 
 ---

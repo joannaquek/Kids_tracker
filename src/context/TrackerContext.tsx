@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Child, SicknessLog, MedicationSchedule, DoseLog } from '../types';
+import { clearAllMedicationPhotos, deleteMedicationPhoto } from '../lib/medicationPhotos';
 
 interface TrackerState {
   children: Child[];
@@ -152,6 +153,14 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const deleteChild = (id: string) => {
+    state.medicationSchedules
+      .filter((s) => s.childId === id && s.photoId)
+      .forEach((s) => {
+        deleteMedicationPhoto(s.photoId!).catch((error) => {
+          console.error('Failed to delete medication photo', error);
+        });
+      });
+
     setState((prev) => ({
       ...prev,
       children: prev.children.filter((c) => c.id !== id),
@@ -212,6 +221,13 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const deleteMedicationSchedule = (id: string) => {
+    const schedule = state.medicationSchedules.find((s) => s.id === id);
+    if (schedule?.photoId) {
+      deleteMedicationPhoto(schedule.photoId).catch((error) => {
+        console.error('Failed to delete medication photo', error);
+      });
+    }
+
     setState((prev) => ({
       ...prev,
       medicationSchedules: prev.medicationSchedules.filter((s) => s.id !== id),
@@ -271,6 +287,9 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const clearAllData = () => {
+    clearAllMedicationPhotos().catch((error) => {
+      console.error('Failed to clear medication photos', error);
+    });
     setState({
       children: [],
       sicknessLogs: [],
