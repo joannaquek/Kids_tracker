@@ -1043,20 +1043,29 @@ textarea {
 .med-photo-upload-btn--disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
-/* Portaled off-modal so iOS Safari opens the native picker */
-.med-photo-upload-input-portal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 1px;
-  height: 1px;
-  opacity: 0.01;
-  overflow: hidden;
-  border: 0;
-  padding: 0;
-  margin: 0;
+/* Full-size transparent input so Android receives the touch directly */
+.med-photo-upload-input-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+  font-size: 16px;
+}
+
+.med-photo-upload-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
 }
 
 .med-photo-upload-icon {
